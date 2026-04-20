@@ -584,7 +584,8 @@ async def show_stats(call: CallbackQuery, bot: Bot):
         return await call.answer("⛔ Нет прав!", show_alert=True)
 
     import aiosqlite
-    async with aiosqlite.connect("antiflood.db") as db:
+    from bot.database.db import DB_PATH
+    async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT user_id, count, violations FROM message_counts WHERE chat_id=? ORDER BY violations DESC LIMIT 10",
             (chat_id,)
