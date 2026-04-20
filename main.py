@@ -21,11 +21,9 @@ logger = logging.getLogger(__name__)
 async def main():
     await init_db()
     await init_recurring_db()
-    session = AiohttpSession(proxy="socks5://127.0.0.1:10808")
     bot = Bot(
         token=BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-        session=session
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     
     dp = Dispatcher()
