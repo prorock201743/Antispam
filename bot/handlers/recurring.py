@@ -308,6 +308,11 @@ async def show_content_menu(call: CallbackQuery, bot: Bot):
         await call.message.delete()
     except Exception:
         pass
+    await call.message.answer(
+        f"✍️ <b>Настройка сообщения #{msg_id}</b>\n\n{_msg_preview(msg)}\n\n"
+        f"Используйте кнопки ниже чтобы выбрать что хотите установить.",
+        reply_markup=recurring_content_keyboard(msg)
+    )
 
 
 @router.callback_query(F.data.startswith("rec_set_text:"))
