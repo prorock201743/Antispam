@@ -1,11 +1,11 @@
 import aiosqlite
 import json
 import logging
+import os
 from config import DEFAULT_SETTINGS
 
 logger = logging.getLogger(__name__)
-DB_PATH = "antiflood.db"
-
+DB_PATH = os.path.join(os.getenv("DATA_DIR", "/app/data"), "antiflood.db")
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
