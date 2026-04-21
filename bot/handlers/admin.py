@@ -38,6 +38,8 @@ async def private_only_middleware(handler, event, data):
 class WaitingInput(StatesGroup):
     wl_add = State()
     wl_remove = State()
+    phrase_add = State()
+    phrase_remove = State()
 
 
 # ─── Вспомогательные функции ───────────────────────────────────────────────
@@ -642,6 +644,94 @@ async def cmd_admins_list(message: Message):
         return
     lines = "\n".join([f"• <code>{uid}</code>" for uid in BOT_ADMINS])
     await message.answer(f"👥 <b>Администраторы бота:</b>\n\n{lines}")
+
+
+# ─── Запрещённые фразы ────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("af_phrases:"))
+async def show_phrases(call: CallbackQuery, bot: Bot):
+    chat_id = int(call.data.split(":")[1])
+    if not await is_admin(bot, chat_id, call.from_user.id):
+        await call.answer("⛔ Нет прав!", show_alert=True)
+        return
+    settings = await get_settings(chat_id)
+    phrases = settings.get("banned_phrases", [])
+    phrases_text = "\n".join([f"  • <code>{p}</code>" for p in phrases]) if phrases else "  — пусто"
+    from bot.keyboards.keyboards import phrases_keyboard
+    await safe_edit(
+        call,
+        f"🚫 <b>Запрещённые фразы:</b>\n{phrases_text}\n\n"
+        f"Сообщения содержащие эти фразы будут автоматически удалены.",
+        phrases_keyboard(chat_id)
+    )
+
+
+@router.callback_query(F.data.startswith("af_phrase_add:"))
+async def phrase_add_start(call: CallbackQuery, state: FSMContext, bot: Bot):
+    chat_id = int(call.data.split(":")[1])
+    if not await is_admin(bot, chat_id, call.from_user.id):
+        await call.answer("⛔ Нет прав!", show_alert=True)
+        return
+    await state.set_state(WaitingInput.phrase_add)
+    await state.update_data(chat_id=chat_id)
+    await safe_edit(call, "✏️ Введите фразу для блокировки (регистр не важен):")
+
+
+@router.message(WaitingInput.phrase_add)
+async def phrase_add_input(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    chat_id = data["chat_id"]
+    phrase = message.text.strip().lower() if message.text else None
+    if not phrase:
+        return await message.answer("❌ Введите текст фразы.")
+    settings = await get_settings(chat_id)
+    phrases = settings.get("banned_phrases", [])
+    if phrase in phrases:
+        await message.answer(f"ℹ️ Фраза <code>{phrase}</code> уже в списке.")
+    else:
+        phrases.append(phrase)
+        settings["banned_phrases"] = phrases
+        try:
+            title = (await bot.get_chat(chat_id)).title or "Группа"
+        except Exception:
+            title = "Группа"
+        await save_settings(chat_id, title, settings)
+        await message.answer(f"✅ Фраза <code>{phrase}</code> добавлена.")
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("af_phrase_remove:"))
+async def phrase_remove_start(call: CallbackQuery, state: FSMContext, bot: Bot):
+    chat_id = int(call.data.split(":")[1])
+    if not await is_admin(bot, chat_id, call.from_user.id):
+        await call.answer("⛔ Нет прав!", show_alert=True)
+        return
+    await state.set_state(WaitingInput.phrase_remove)
+    await state.update_data(chat_id=chat_id)
+    await safe_edit(call, "✏️ Введите фразу для удаления из списка:")
+
+
+@router.message(WaitingInput.phrase_remove)
+async def phrase_remove_input(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    chat_id = data["chat_id"]
+    phrase = message.text.strip().lower() if message.text else None
+    if not phrase:
+        return await message.answer("❌ Введите текст фразы.")
+    settings = await get_settings(chat_id)
+    phrases = settings.get("banned_phrases", [])
+    if phrase not in phrases:
+        await message.answer(f"ℹ️ Фраза <code>{phrase}</code> не найдена в списке.")
+    else:
+        phrases.remove(phrase)
+        settings["banned_phrases"] = phrases
+        try:
+            title = (await bot.get_chat(chat_id)).title or "Группа"
+        except Exception:
+            title = "Группа"
+        await save_settings(chat_id, title, settings)
+        await message.answer(f"✅ Фраза <code>{phrase}</code> удалена.")
+    await state.clear()
 
 # ─── noop ─────────────────────────────────────────────────────────────────
 
