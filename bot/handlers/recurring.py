@@ -33,25 +33,41 @@ def _moscow_now() -> datetime:
     return datetime.now(timezone(timedelta(hours=3)))
 
 
-def _calc_next_send(start_time_str: str, interval_hours: int) -> float:
+def _calc_next_send(start_time_str: str, interval_hours: int, end_time_str: str = "23:00") -> float:
     now = _moscow_now()
     try:
-        h, m = map(int, start_time_str.split(":"))
+        sh, sm = map(int, start_time_str.split(":"))
+        eh, em = map(int, end_time_str.split(":"))
     except Exception:
-        h, m = 9, 0
+        sh, sm = 9, 0
+        eh, em = 23, 0
 
-    candidate = now.replace(hour=h, minute=m, second=0, microsecond=0)
-    if candidate <= now:
-        candidate = candidate + timedelta(days=1)
+    start_minutes = sh * 60 + sm
+    end_minutes = eh * 60 + em
+    now_minutes = now.hour * 60 + now.minute
 
     if interval_hours < 24:
-        base = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        base = now.replace(hour=sh, minute=sm, second=0, microsecond=0)
         if base > now:
             base -= timedelta(days=1)
+        # Двигаемся вперёд кратными интервалами
         while base <= now:
             base += timedelta(hours=interval_hours)
-        candidate = base
 
+        # Если попали вне окна — переносим на следующий start_time
+        candidate_minutes = base.hour * 60 + base.minute
+        if candidate_minutes < start_minutes or candidate_minutes > end_minutes:
+            # Переносим на следующий день в start_time
+            base = now.replace(hour=sh, minute=sm, second=0, microsecond=0)
+            if base <= now:
+                base += timedelta(days=1)
+
+        return base.timestamp()
+
+    # Интервал 24ч — просто следующий start_time
+    candidate = now.replace(hour=sh, minute=sm, second=0, microsecond=0)
+    if candidate <= now:
+        candidate += timedelta(days=1)
     return candidate.timestamp()
 
 
@@ -233,7 +249,7 @@ async def toggle_recurring(call: CallbackQuery, bot: Bot):
     if not await is_admin(bot, msg["chat_id"], call.from_user.id):
         return await call.answer("⛔ Нет прав!", show_alert=True)
     new_enabled = 0 if msg["enabled"] else 1
-    next_send = _calc_next_send(msg["start_time"], msg["interval_hours"]) if new_enabled else 0.0
+    next_send = _calc_next_send(msg["start_time"], msg["interval_hours"], msg.get("end_time", "23:00")) if new_enabled else 0.0
     await update_recurring_message(msg_id, enabled=new_enabled, next_send_at=next_send)
     await call.answer("✅ Включено" if new_enabled else "❌ Выключено")
     msg = await get_recurring_message(msg_id)
@@ -574,7 +590,7 @@ async def set_time_input(message: Message, state: FSMContext):
     except Exception:
         return await message.answer("❌ Неверный формат. Введите время как <code>09:00</code>")
     msg = await get_recurring_message(msg_id)
-    next_send = _calc_next_send(time_str, msg["interval_hours"]) if msg["enabled"] else 0.0
+    next_send = _calc_next_send(time_str, msg["interval_hours"], msg.get("end_time", "23:00")) if msg["enabled"] else 0.0
     await update_recurring_message(msg_id, start_time=time_str, next_send_at=next_send)
     await state.clear()
     msg = await get_recurring_message(msg_id)
@@ -617,7 +633,7 @@ async def set_interval_value(call: CallbackQuery, bot: Bot):
         return await call.answer("Не найдено", show_alert=True)
     if not await is_admin(bot, msg["chat_id"], call.from_user.id):
         return await call.answer("⛔ Нет прав!", show_alert=True)
-    next_send = _calc_next_send(msg["start_time"], hours) if msg["enabled"] else 0.0
+    next_send = _calc_next_send(msg["start_time"], hours, msg.get("end_time", "23:00")) if msg["enabled"] else 0.0
     await update_recurring_message(msg_id, interval_hours=hours, next_send_at=next_send)
     await call.answer(f"✅ Каждые {hours} ч.")
     msg = await get_recurring_message(msg_id)
