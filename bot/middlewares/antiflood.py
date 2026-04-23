@@ -48,9 +48,10 @@ class AntiFloodMiddleware(BaseMiddleware):
                 pass
 
         # Проверяем запрещённые фразы
-        if event.text:
+        msg_text = event.text or event.caption or ""
+        if msg_text:
             banned_phrases = settings.get("banned_phrases", [])
-            msg_lower = event.text.lower()
+            msg_lower = msg_text.lower()
             for phrase in banned_phrases:
                 if phrase in msg_lower:
                     try:
